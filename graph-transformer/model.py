@@ -40,7 +40,7 @@ class ModelConfig:
     # Set this to len(vocab) from graph_builder.py's saved id_vocab.pkl
     num_ids = 106
 
-    node_stat_feature_dim = 10
+    node_stat_feature_dim = 9
 
     # A slightly larger latent space helps the encoder distinguish abnormal
     # ID activity patterns without exploding the parameter count on CPU.
@@ -201,7 +201,7 @@ def reconstruction_loss(outputs: dict, x_stats: torch.Tensor, edge_index: torch.
     windows.
     """
     feature_weights = torch.tensor(
-        [1.0, 1.0, 1.0, 1.2, 2.0, 1.0, 1.5, 2.5, 2.5, 3.0],
+        [1.0, 1.0, 1.0, 1.2, 2.0, 1.0, 1.5, 2.5, 2.5],
         device=x_stats.device,
         dtype=x_stats.dtype,
     )

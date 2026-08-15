@@ -39,7 +39,7 @@ CHECKPOINT_PATH = os.path.join(OUTPUT_DIR, "best_model.pt")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 BATCH_SIZE = 8
-NUM_EPOCHS = 60
+NUM_EPOCHS = 30
 LEARNING_RATE = 5e-4
 VAL_FRACTION = 0.15
 SEED = 42

@@ -48,7 +48,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 WINDOWED_DATA_PATH = os.path.join(OUTPUT_DIR, "road_windowed.pkl")
 GRAPH_OUTPUT_PATH = os.path.join(OUTPUT_DIR, "graphs.pt")
 VOCAB_OUTPUT_PATH = os.path.join(OUTPUT_DIR, "vocab.pkl")
-NODE_FEATURE_DIM = 10  # message count, inter-arrival stats, signal stats, activity share, signal range, attack density, signal channel count
+NODE_FEATURE_DIM = 9 # message count, inter-arrival stats, signal stats, activity share, signal range, signal channel count
 
 # 1. ID Lookup table
 def build_id_vocab(windows: list[WindowRecord]) -> dict:
@@ -124,7 +124,6 @@ def extract_node_features(id_messages: pd.DataFrame, window_duration: float, tot
 
     signal_range = float(signal_max - signal_min)
     n_signal_channels = float(len(signal_cols))
-    attack_fraction = float((id_messages["Label"] == 1).mean())
 
     return np.array([
         msg_count,
@@ -135,8 +134,7 @@ def extract_node_features(id_messages: pd.DataFrame, window_duration: float, tot
         signal_min,
         signal_max,
         activity_share,
-        signal_range,
-        attack_fraction,
+        signal_range
     ], dtype=np.float32)
 
 
