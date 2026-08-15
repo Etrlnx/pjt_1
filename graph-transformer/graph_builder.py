@@ -48,7 +48,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 WINDOWED_DATA_PATH = os.path.join(OUTPUT_DIR, "road_windowed.pkl")
 GRAPH_OUTPUT_PATH = os.path.join(OUTPUT_DIR, "graphs.pt")
 VOCAB_OUTPUT_PATH = os.path.join(OUTPUT_DIR, "vocab.pkl")
-NODE_FEATURE_DIM = 7  # the 7 features under use
+NODE_FEATURE_DIM = 10  # message count, inter-arrival stats, signal stats, activity share, signal range, attack density, signal channel count
 
 # 1. ID Lookup table
 def build_id_vocab(windows: list[WindowRecord]) -> dict:
@@ -88,13 +88,15 @@ def _extract_signal_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c.startswith("Signal_")]
 
 
-def extract_node_features(id_messages: pd.DataFrame, window_duration: float) -> np.ndarray:
+def extract_node_features(id_messages: pd.DataFrame, window_duration: float, total_window_messages: int) -> np.ndarray:
     """
-    Computes the fixed-size statistical feature vector
+    Computes a fixed-size statistical feature vector that is more sensitive to
+    unusual ID behavior inside a window, not just raw volume.
     """
     signal_cols = _extract_signal_columns(id_messages)
 
     msg_count = len(id_messages)
+    activity_share = float(msg_count / max(total_window_messages, 1))
 
     # Inter-arrival time stats
     times = id_messages["Time"].values
@@ -103,14 +105,9 @@ def extract_node_features(id_messages: pd.DataFrame, window_duration: float) -> 
         mean_iat = float(np.mean(iats))
         std_iat = float(np.std(iats))
     else:
-        # Only one message in the window for this ID — no interval to compute.
-        # Fall back to window duration as a (weak) proxy for "how spaced out".
         mean_iat = window_duration
         std_iat = 0.0
 
-    # Flatten all signal values across all signal columns and all messages
-    # for this ID within the window, ignoring NaNs (messages that didn't
-    # carry a particular signal).
     if signal_cols:
         signal_values = id_messages[signal_cols].values.flatten()
         signal_values = signal_values[~np.isnan(signal_values)]
@@ -125,7 +122,9 @@ def extract_node_features(id_messages: pd.DataFrame, window_duration: float) -> 
     else:
         signal_mean = signal_std = signal_min = signal_max = 0.0
 
+    signal_range = float(signal_max - signal_min)
     n_signal_channels = float(len(signal_cols))
+    attack_fraction = float((id_messages["Label"] == 1).mean())
 
     return np.array([
         msg_count,
@@ -135,7 +134,9 @@ def extract_node_features(id_messages: pd.DataFrame, window_duration: float) -> 
         signal_std,
         signal_min,
         signal_max,
-        n_signal_channels,
+        activity_share,
+        signal_range,
+        attack_fraction,
     ], dtype=np.float32)
 
 
@@ -190,13 +191,14 @@ def build_graph_for_window(window: WindowRecord, global_vocab: dict) -> Data:
     local_node_index = {id_str: i for i, id_str in enumerate(unique_ids)}
 
     window_duration = window.window_end - window.window_start
+    total_window_messages = len(df)
 
     node_features = []
     global_id_indices = []  # for the model's ID embedding lookup
 
     for id_str in unique_ids:
         id_msgs = df[df["ID"] == id_str]
-        feat = extract_node_features(id_msgs, window_duration)
+        feat = extract_node_features(id_msgs, window_duration, total_window_messages)
         node_features.append(feat)
         global_id_indices.append(global_vocab.get(id_str, global_vocab["<UNK>"]))
 
@@ -219,6 +221,9 @@ def build_graph_for_window(window: WindowRecord, global_vocab: dict) -> Data:
     data.capture_name = window.capture_name
     data.window_start = window.window_start
     data.frac_attack_messages = window.frac_attack_messages
+    data.graph_message_count = float(len(df))
+    data.graph_unique_ids = float(len(unique_ids))
+    data.graph_attack_fraction = float(df["Label"].mean())
 
     return data
 

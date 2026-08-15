@@ -94,9 +94,8 @@ def discover_captures(ambient_dir: str, attack_dir: str) -> list[CaptureFile]:
     Finds all signal-translated CSV captures and pairs each with its
     metadata JSON file, if present.
 
-    TODO: Adjust the glob patterns below if your extracted folder structure
-          differs from what's assumed here. Signal-translated files in ROAD
-          are typically named like: <capture_name>_signal_extraction.csv
+    Signal-translated files in ROAD are typically named like:
+    <capture_name>_signal_extraction.csv
     """
     captures = []
 

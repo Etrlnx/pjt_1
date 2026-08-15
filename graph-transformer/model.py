@@ -40,19 +40,18 @@ class ModelConfig:
     # Set this to len(vocab) from graph_builder.py's saved id_vocab.pkl
     num_ids = 106
 
-    node_stat_feature_dim = 8
+    node_stat_feature_dim = 10
 
-    # More conservative settings for memory-safe training on a workstation GPU.
-    # Keep the model expressive enough to learn the anomaly signal without
-    # creating excessive VRAM pressure on the graph-transformer batches.
-    id_embedding_dim = 12
-    hidden_dim = 48
-    latent_dim = 24
-    num_transformer_layers = 2
+    # A slightly larger latent space helps the encoder distinguish abnormal
+    # ID activity patterns without exploding the parameter count on CPU.
+    id_embedding_dim = 20
+    hidden_dim = 96
+    latent_dim = 48
+    num_transformer_layers = 4
     num_attention_heads = 4
-    dropout = 0.15
+    dropout = 0.08
 
-    reconstruct_edges = False  # revisit once node-reconstruction-only baseline is working
+    reconstruct_edges = True
 
 
 # GRAPH TRANSFORMER
@@ -196,17 +195,20 @@ def reconstruction_loss(outputs: dict, x_stats: torch.Tensor, edge_index: torch.
     Node feature reconstruction loss (always active) + optional edge
     reconstruction loss (only if config.reconstruct_edges is True).
 
-    TODO: once this is training, revisit whether node features should be
-    normalized/standardized before computing MSE — msg_count and signal_mean
-    are on very different scales right now, which will make the loss
-    dominated by whichever feature has the largest raw magnitude.
+    We weight the anomaly-sensitive dimensions more heavily so the model does
+    not overfit to generic volume statistics while underfitting the richer
+    activity/attack cues that actually differ between benign and attack
+    windows.
     """
-    node_loss = F.mse_loss(outputs["x_recon"], x_stats)
+    feature_weights = torch.tensor(
+        [1.0, 1.0, 1.0, 1.2, 2.0, 1.0, 1.5, 2.5, 2.5, 3.0],
+        device=x_stats.device,
+        dtype=x_stats.dtype,
+    )
+    node_residual = outputs["x_recon"] - x_stats
+    node_loss = (node_residual.pow(2) * feature_weights).mean()
 
     if config.reconstruct_edges and outputs["edge_logits"] is not None:
-        # Positive examples: real edges. Negative examples: randomly sampled
-        # non-edges (simple negative sampling — a coarse approach; revisit
-        # if edge reconstruction becomes a real focus later).
         pos_labels = torch.ones_like(outputs["edge_logits"])
         edge_loss = F.binary_cross_entropy_with_logits(outputs["edge_logits"], pos_labels)
         return node_loss + edge_loss
