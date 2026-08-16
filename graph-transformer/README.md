@@ -27,33 +27,14 @@ CAN Traffic (ROAD Dataset)
 ## Module Architecture
 
 ```mermaid
-graph TD
-    subgraph S1["1. Preprocessing (preprocess.py)"]
-        A["Raw Signal-Translated CSVs (ROAD)"] --> B["Temporal Windowing (W=2.0s)"]
-        B --> C["WindowRecord Pickles (road_windowed.pkl)"]
-    end
+flowchart TD
 
-    subgraph S2["2. Graph Construction (graph_builder.py)"]
-        C --> D["Arbitration ID Vocabulary (d=20)"]
-        C --> E["9D Statistical Node Features"]
-        C --> F["Directed Temporal Adjacency Edges"]
-        D & E & F --> G["PyG Graph Dataset (graphs.pt)"]
-    end
-
-    subgraph S3["3. Coupled Model (model.py)"]
-        G --> H["Input Projection (29 → 96)"]
-        H --> I["4x TransformerConv Encoder (4 Heads, Latent=48)"]
-        I --> J["Latent Node Embeddings (z)"]
-        I --> K["Attention Weight Hooks (get_attention_weights)"]
-        J --> L["MLP Node Feature Decoder (48 → 96 → 9)"]
-        J --> M["Inner-Product Edge Decoder"]
-    end
-
-    subgraph S4["4. Training & Evaluation (train.py)"]
-        L & M --> N["Weighted MSE + Edge BCE Loss"]
-        N --> O["Capture-Aware Benign-Only Training"]
-        O --> P["Per-Capture Reconstruction Error Evaluation"]
-    end
+A[Raw CAN Captures] --> B[Preprocessing and Windowing]
+B --> C[Dynamic Graph Construction]
+C --> D[Graph Transformer Encoder]
+D --> E[Latent Representation]
+E --> F[Feature and Edge Decoders]
+F --> G[Reconstruction Loss and Evaluation]
 ```
 
 ---
@@ -111,12 +92,13 @@ The encoder and decoder are trained jointly so that the latent space directly en
 
 ```mermaid
 flowchart LR
-    A["Node Stats (9D) + ID Emb (20D)"] --> B["Linear Projection (96D)"]
-    B --> C["4x TransformerConv Layers<br/>(4 Heads, Dropout 0.08, Edge Dim 1)"]
-    C --> D["Latent Embeddings z (48D)"]
-    D --> E["MLP Node Decoder<br/>(48 → 96 → 9)"]
-    D --> F["Inner-Product Edge Decoder<br/>(z_src · z_dst)"]
-    C -.-> G["Captured Attention Weights<br/>(Stored for XAI)"]
+
+A[Node Features and ID Embeddings] --> B[Linear Projection]
+B --> C[TransformerConv Encoder Layers]
+C --> D[Latent Graph Embedding]
+D --> E[Node Feature Decoder]
+D --> F[Edge Structure Decoder]
+C --> G[Attention Weights for XAI]
 ```
 
 ### Model Hyperparameters (`ModelConfig`)

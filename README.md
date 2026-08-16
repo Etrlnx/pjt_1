@@ -121,10 +121,10 @@ The gateway's fast filter forwards clearly normal traffic directly to the vehicl
 ```mermaid
 flowchart LR
 
-A[Dynamic Graph] --> B[Graph Transformer Encoder]
-B --> C[Graph Autoencoder Decoder]
-C --> D[Reconstruction Error & Multi-Signal Score]
-D --> E[Risk State & XAI]
+A[Dynamic Graph] --> B[Graph Transformer]
+B --> C[Graph Autoencoder]
+C --> D[Anomaly Score]
+D --> E[Risk State]
 ```
 
 **Why this separation?** Splitting "graph representation," "relational reasoning," "reconstruction-based detection," and "risk scoring" into distinct stages keeps each component independently testable — the Graph Transformer's embeddings can be evaluated on their own, and the anomaly-scoring logic can be tuned or replaced without changing how the graph itself is built.
@@ -134,14 +134,14 @@ D --> E[Risk State & XAI]
 ```mermaid
 flowchart TD
 
-A[Temporal Windowing (preprocess.py)] --> B[Dynamic Graph Construction (graph_builder.py)]
-B --> C[Graph Transformer Encoding (model.py)]
-C --> D[Graph Autoencoder Reconstruction (model.py)]
+A[Temporal Windowing] --> B[Dynamic Graph Construction]
+B --> C[Graph Transformer Encoding]
+C --> D[Graph Autoencoder Reconstruction]
 
-D --> E[Reconstruction Deviation (Active)]
-C --> F[Temporal + Structural Deviation (In Progress)]
+D --> E[Reconstruction Deviation]
+C --> F[Structural and Temporal Deviation]
 
-E --> G[Adaptive Anomaly Score]
+E --> G[Anomaly Score Fusion]
 F --> G
 
 G --> H{Risk Level}
@@ -240,10 +240,10 @@ python graph-transformer/train.py
 ```mermaid
 flowchart LR
 
-A[CAN Arbitration IDs] --> D[Dynamic Graph G_t]
-B[9D Statistical Node Features] --> D
-C[Global ID Embedding Vocab] --> D
-E[Temporal Message Adjacency] -->|Edge Weights| D
+A[CAN Arbitration IDs] --> D[Dynamic Graph]
+B[Statistical Node Features] --> D
+C[ID Vocabulary Embeddings] --> D
+E[Temporal Message Adjacency] --> D
 
 D --> F[Graph Transformer Encoder]
 ```
@@ -271,11 +271,11 @@ Each temporal window ($W = 2.0\text{s}$) of CAN traffic is converted into a PyTo
 ```mermaid
 flowchart LR
 
-A[Node Feature Reconstruction Error] --> D[Anomaly Evaluation]
-B[Structural Edge BCE Loss] --> D
-C[Temporal / Burst Dynamics] --> D
+A[Feature Reconstruction Error] --> D[Anomaly Evaluation]
+B[Structural Edge Loss] --> D
+C[Temporal Deviation] --> D
 
-D --> E[Per-Capture Breakdown & Decision]
+D --> E[Risk State Decision]
 ```
 
 Anomaly detection is formulated as an **unsupervised one-class reconstruction task**:
