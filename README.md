@@ -1,12 +1,12 @@
 # An Explainable Graph-Based Transformer for Zero-Day Attack Detection in Autonomous Vehicles
 
-![Status](https://img.shields.io/badge/status-design%20%2F%20early%20development-yellow)
-![License](https://img.shields.io/badge/license-TBD-lightgrey)
+![Status](https://img.shields.io/badge/status-active%20development%20%28pipeline%20functional%29-brightgreen)
+![License](https://img.shields.io/badge/license-MIT%20License-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Domain](https://img.shields.io/badge/domain-CAN%20bus%20security-orange)
 ![Model](https://img.shields.io/badge/model-Graph%20Transformer%20%2B%20Autoencoder-informational)
 
-> **Note on project status:** This repository currently contains the research design, system architecture, and planning documentation for the project described below. It does **not** yet contain a trained model or a complete working pipeline. Every section below is explicitly labeled as **Current**, **Planned**, or **Future Work** so that readers know exactly what exists today versus what is designed but not yet built.
+> **Note on project status:** The core representation-learning and reconstruction-based anomaly detection pipeline is **implemented, trained, and functional** within [`graph-transformer/`](graph-transformer/). This includes ROAD dataset ingestion, temporal windowing, dynamic graph construction (9D node features + global arbitration ID embeddings + directed temporal adjacency edges), coupled `TransformerConv` encoder with attention extraction hooks, multi-component decoder, and capture-aware benign-only training. Multi-deviation anomaly score fusion, higher-level XAI evidence synthesis, and gateway containment policy remain in active development.
 
 ---
 
@@ -121,10 +121,10 @@ The gateway's fast filter forwards clearly normal traffic directly to the vehicl
 ```mermaid
 flowchart LR
 
-A[Dynamic Graph] --> B[Graph Transformer]
-B --> C[Graph Autoencoder]
-C --> D[Anomaly Score]
-D --> E[Risk State]
+A[Dynamic Graph] --> B[Graph Transformer Encoder]
+B --> C[Graph Autoencoder Decoder]
+C --> D[Reconstruction Error & Multi-Signal Score]
+D --> E[Risk State & XAI]
 ```
 
 **Why this separation?** Splitting "graph representation," "relational reasoning," "reconstruction-based detection," and "risk scoring" into distinct stages keeps each component independently testable — the Graph Transformer's embeddings can be evaluated on their own, and the anomaly-scoring logic can be tuned or replaced without changing how the graph itself is built.
@@ -134,12 +134,12 @@ D --> E[Risk State]
 ```mermaid
 flowchart TD
 
-A[Temporal Windowing] --> B[Dynamic Graph Construction]
-B --> C[Graph Transformer Encoding]
-C --> D[Graph Autoencoder Reconstruction]
+A[Temporal Windowing (preprocess.py)] --> B[Dynamic Graph Construction (graph_builder.py)]
+B --> C[Graph Transformer Encoding (model.py)]
+C --> D[Graph Autoencoder Reconstruction (model.py)]
 
-D --> E[Reconstruction Deviation]
-C --> F[Temporal + Structural Deviation]
+D --> E[Reconstruction Deviation (Active)]
+C --> F[Temporal + Structural Deviation (In Progress)]
 
 E --> G[Adaptive Anomaly Score]
 F --> G
@@ -149,78 +149,90 @@ H -->|Low| I[Forward Traffic]
 H -->|High| J[Trigger XAI Evidence Layer]
 ```
 
-CAN traffic that reaches the learned pipeline is first grouped into temporal windows, then assembled into a dynamic graph of ECUs and message relationships. The Graph Transformer encodes that graph, and the Graph Autoencoder attempts to reconstruct the encoding. The reconstruction deviation is combined with temporal and graph-structural deviation signals into a single adaptive anomaly score, which determines whether traffic is simply forwarded or escalated to the explainability layer.
+CAN traffic that reaches the learned pipeline is first grouped into temporal windows, then assembled into a dynamic graph of CAN arbitration IDs and message transition relationships. The Graph Transformer encodes that graph, and the Graph Autoencoder attempts to reconstruct the node statistical features and structural edges. The reconstruction error (currently evaluated per capture on held-out attacks) is combined with temporal and graph-structural deviation signals to distinguish normal driving behavior from zero-day masquerade and injection attacks.
 
-**Status: Planned.** This describes the intended detection loop; no training run or live pipeline has been executed yet in this repository.
+**Status: Core Representation & Reconstruction Detection Implemented.** The windowing, graph builder, coupled model, and benign-only training with per-capture evaluation are functional in `graph-transformer/`. Extended anomaly score fusion and XAI evidence generation are in active development.
 
 ## 9. Technology Stack
 
 | Layer | Technology | Status |
 |---|---|---|
-| Programming Language | Python 3.10+ | Planned |
-| Deep Learning Framework | PyTorch | Planned |
-| Graph Neural Network / Attention Layers | PyTorch Geometric or a custom Graph Transformer implementation | Planned |
-| Autoencoder | Custom Graph Autoencoder (built on the Graph Transformer encoder) | Planned |
-| CAN Data Source | Public CAN intrusion-detection datasets (e.g., Car-Hacking / CICIoV-style datasets) or simulated CAN traffic | Planned |
-| Explainability | Attention visualization, feature attribution, and graph-explanation tooling (e.g., GNNExplainer-style methods) | Planned |
+| Programming Language | Python 3.10+ | Implemented |
+| Deep Learning Framework | PyTorch (>= 2.1) | Implemented |
+| Graph Neural Network / Attention Layers | PyTorch Geometric (`TransformerConv` multi-head edge-conditioned attention) | Implemented |
+| Autoencoder Architecture | Coupled `GraphTransformerAutoencoder` (MLP node feature decoder + inner-product edge decoder) | Implemented |
+| CAN Data Source | ROAD (Real Autonomous Driving) Dataset (ORNL) — signal-translated ambient + attack captures | Implemented |
+| Preprocessing & Windowing | Custom sliding-window parser (`preprocess.py`) with configurable strides | Implemented |
+| Dynamic Graph Generation | Custom PyG graph builder (`graph_builder.py`) with 9D node stats & ID vocabulary embedding | Implemented |
+| Explainability Layer | Attention weight hooks (`get_attention_weights`), feature attribution, graph explanation | In Progress / Planned |
 | Gateway / Policy Simulation | Custom rule-based policy engine for allow/restrict/isolate/alert decisions | Planned |
-| Experiment Tracking | TBD (e.g., Weights & Biases or TensorBoard) | Future consideration |
-
-> The stack above reflects the intended technologies based on the project design. No dependency has been locked in with a working implementation yet — see [Installation](#11-installation).
+| Experiment Tracking | PyTorch checkpoints + per-capture metric logs (TensorBoard/W&B integration planned) | In Progress |
 
 ## 10. Directory Structure
 
-The structure below reflects the **planned** module breakdown. It has not yet been implemented as actual code in this repository.
-
 ```
-project-root/
-├── data/                       # Planned: raw and preprocessed CAN traffic / public IDS datasets
-├── preprocessing/               # Module 1: temporal windowing, frame parsing, feature extraction
-├── graph_builder/                # Module 2: dynamic graph construction (nodes/edges) from windowed traffic
-├── graph_transformer/            # Module 3: core research contribution — relational/temporal encoder
-├── autoencoder/                   # Module 4: Graph Autoencoder, reconstruction + deviation scoring
-├── anomaly_scoring/                # Module 5: fusion of reconstruction, temporal, structural deviation
-├── explainability/                  # Module 6: attention analysis, feature attribution, graph explanation
-├── gateway_policy/                   # Module 7: risk-to-action mapping (allow/restrict/isolate/alert)
-├── evaluation/                        # Module 8: baseline comparisons and metric computation
-├── configs/                            # Planned: experiment/config files
-├── notebooks/                           # Planned: analysis and visualization notebooks
-└── README.md
+capstone/
+├── attack-detection/          # Module: Zero-day detection mechanisms, anomaly fusion, risk assessment
+│   └── README.md              # Conceptual architecture and scoring design
+├── explainability/            # Module: XAI evidence layer (attention analysis, attribution, reasoning)
+│   └── README.md              # XAI pipeline, fusion design, and security reporting
+├── graph-transformer/         # Module: Core representation learning & GAE detection pipeline
+│   ├── CHANGELOG.md           # Milestone & engineering change history
+│   ├── README.md              # Detailed architecture, schema, & usage documentation
+│   ├── preprocess.py          # Data ingestion & temporal windowing for ROAD dataset
+│   ├── graph_builder.py       # Dynamic graph construction (9D node features, global ID vocab, directed edges)
+│   ├── model.py               # Coupled GraphTransformerAutoencoder (TransformerConv + MLP/edge decoders)
+│   ├── train.py               # Benign-only training, capture-aware CV, train-only normalization, evaluation
+│   ├── road/                  # Local ROAD dataset directory (signal-translated CSVs)
+│   └── outputs/               # Serialized window records, graph dataset, vocab, and best_model.pt
+├── requirements.txt           # Core Python dependencies
+├── LICENSE                    # MIT License
+└── README.md                  # Project overview and research documentation
 ```
 
 ## 11. Installation
 
-> **Status: Planned.** No installable package or `requirements.txt` currently exists in this repository. The steps below describe the intended setup once the pipeline is implemented.
+**Status: Functional.** The data preprocessing, graph construction, model definition, and training pipeline in `graph-transformer/` are fully implemented and runnable. See the [Graph Transformer Changelog](graph-transformer/CHANGELOG.md) for recent engineering updates.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/Etrlnx/pjt_1.git
+cd pjt_1
 
 # 2. Create a virtual environment
 python -m venv venv
 source venv/bin/activate  # on Windows: venv\Scripts\activate
 
-# 3. Install dependencies (planned)
+# 3. Install PyTorch and PyTorch Geometric FIRST, following official platform/CUDA selectors:
+#      - PyTorch:           https://pytorch.org/get-started/locally/
+#      - PyTorch Geometric: https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html
+
+# 4. Install remaining dependencies
 pip install -r requirements.txt
 
-# 4. Obtain a CAN intrusion-detection dataset separately
-# (see Technology Stack for candidate public datasets)
+# 5. Download and extract the ROAD dataset under graph-transformer/road/
+#    The directory structure should be:
+#    graph-transformer/road/road/signal_extractions/ambient/*.csv
+#    graph-transformer/road/road/signal_extractions/attacks/*.csv
 ```
 
 ## 12. Usage
 
-> **Status: Planned.** The commands below describe the intended usage once training and evaluation scripts exist; they are not runnable yet.
+The core pipeline can be executed in sequence from the repository root:
 
 ```bash
-# Build graphs from raw/preprocessed CAN traffic (planned entry point)
-python build_graphs.py --config configs/default.yaml
+# Step 1: Preprocess raw ROAD dataset into temporal window records
+python graph-transformer/preprocess.py
+# -> Emits outputs/road_windowed.pkl (WindowRecord objects with raw message DataFrames)
 
-# Train the Graph Transformer + Graph Autoencoder (planned entry point)
-python train.py --config configs/default.yaml
+# Step 2: Build dynamic PyTorch Geometric graphs and global ID vocabulary
+python graph-transformer/graph_builder.py
+# -> Emits outputs/graphs.pt (PyG Data objects) and outputs/vocab.pkl
 
-# Score traffic and generate XAI explanations for high-risk windows (planned entry point)
-python evaluate.py --checkpoint checkpoints/model.pt
+# Step 3: Train Graph Transformer + Autoencoder on benign captures & evaluate on held-out attacks
+python graph-transformer/train.py
+# -> Trains on benign-only graphs, standardizes features via train-set statistics,
+#    saves outputs/best_model.pt, and prints a per-capture reconstruction error breakdown.
 ```
 
 ## 13. Graph Construction
@@ -228,28 +240,53 @@ python evaluate.py --checkpoint checkpoints/model.pt
 ```mermaid
 flowchart LR
 
-A[ECUs] --> D[Dynamic Graph]
-B[CAN Message IDs] --> D
-C[Timing / Frequency Info] --> D
+A[CAN Arbitration IDs] --> D[Dynamic Graph G_t]
+B[9D Statistical Node Features] --> D
+C[Global ID Embedding Vocab] --> D
+E[Temporal Message Adjacency] -->|Edge Weights| D
 
-D --> E[Graph Transformer]
+D --> F[Graph Transformer Encoder]
 ```
 
-Each temporal window of CAN traffic is converted into a graph where nodes represent ECUs and/or message identifiers, and edges represent observed communication relationships, weighted or annotated with timing and frequency information. This graph is passed into the Graph Transformer for encoding.
+Each temporal window ($W = 2.0\text{s}$) of CAN traffic is converted into a PyTorch Geometric `Data` graph:
 
-**Why this representation?** No single signal — which ECU sent a frame, what message ID was used, or how frequently/rapidly it was sent — is sufficient on its own to characterize normal behavior. Combining them into a single graph keeps the downstream Graph Transformer and Autoencoder sensor/feature-agnostic, and lets the model learn relationships (e.g., an ECU suddenly communicating with a message ID it has never used) that simple threshold-based rules would miss.
+- **Nodes**: Each distinct CAN arbitration ID present in the window.
+- **Node Feature Vector (9 Dimensions)**:
+  1. `msg_count`: Total messages from this ID in the window.
+  2. `mean_iat`: Mean inter-arrival time between consecutive messages of this ID.
+  3. `std_iat`: Standard deviation of inter-arrival time.
+  4. `signal_mean`: Mean across all non-NaN decoded signal values for this ID.
+  5. `signal_std`: Standard deviation of decoded signals.
+  6. `signal_min`: Minimum decoded signal value.
+  7. `signal_max`: Maximum decoded signal value.
+  8. `activity_share`: Fraction of window traffic from this ID (`msg_count / total_window_messages`).
+  9. `signal_range`: Range of decoded signals (`signal_max - signal_min`).
+- **Node Identity Embedding**: An integer index into a global ID vocabulary (106 unique IDs including `<UNK>` at index 0) projected into a 20-dimensional learned embedding space.
+- **Edges**: Directed edges representing temporal message adjacency (consecutive messages with different arbitration IDs). Edge attributes (`edge_attr`) store the count of such transitions within the window.
 
-**Status: Planned.** The specific rule for what constitutes an edge (e.g., co-occurrence within a window, a fixed communication schedule, or observed timing correlation) has not yet been finalized or implemented.
+**Status: Implemented.** See [`graph-transformer/graph_builder.py`](graph-transformer/graph_builder.py) for the complete graph generation implementation.
 
 ## 14. Anomaly Scoring
 
-**Status: Planned — not yet finalized.** The anomaly scoring function has not been implemented or precisely specified. Based on the project's proposed architecture, the adaptive anomaly score is expected to combine multiple deviation signals, such as:
+```mermaid
+flowchart LR
 
-- **Reconstruction deviation** — how well the Graph Autoencoder can reconstruct the current graph's latent representation compared to learned normal behavior.
-- **Temporal deviation** — how much the timing/frequency of current traffic differs from expected patterns for the relevant ECUs.
-- **Graph-structural deviation** — how much the current graph's structure (e.g., new edges, unusual connectivity) differs from previously observed normal graphs.
+A[Node Feature Reconstruction Error] --> D[Anomaly Evaluation]
+B[Structural Edge BCE Loss] --> D
+C[Temporal / Burst Dynamics] --> D
 
-The exact weighting and fusion method for these terms is future design work and will be documented here once finalized, to avoid overstating what has been decided.
+D --> E[Per-Capture Breakdown & Decision]
+```
+
+Anomaly detection is formulated as an **unsupervised one-class reconstruction task**:
+
+- **Model Training**: The coupled `GraphTransformerAutoencoder` is trained exclusively on benign ambient captures ($y = 0$).
+- **Reconstruction Loss**:
+  $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{node}} + \mathbb{I}_{\text{edge\_recon}} \cdot \mathcal{L}_{\text{edge}}$$
+  where $\mathcal{L}_{\text{node}}$ is a weighted MSE across node feature residuals giving higher penalty to anomaly-sensitive dimensions (`signal_std`, `signal_max`, `activity_share`, `signal_range`), and $\mathcal{L}_{\text{edge}}$ is binary cross-entropy on inner-product reconstructed edge logits.
+- **Evaluation Strategy**: All attack captures (including masquerade attacks) are held out for testing. Evaluation runs with single-graph batches (`batch_size=1`) to retain capture metadata and calculate per-capture reconstruction error distributions alongside aggregate benign-vs-attack separation.
+
+**Status: Core Reconstruction Implemented; Multi-term Fusion In Progress.** See [`graph-transformer/train.py`](graph-transformer/train.py) and [`attack-detection/README.md`](attack-detection/README.md).
 
 ## 15. Explainability Layer
 
@@ -265,11 +302,11 @@ E --> F[Security Explanation]
 E --> G[Risk State]
 ```
 
-When the anomaly score indicates high risk, the XAI evidence layer is triggered. Four complementary sources of evidence — Graph Transformer attention weights, feature attribution, structural graph explanation, and reconstruction error analysis — are fused into a single output: a human-readable **security explanation** (what looked anomalous and why) and a machine-usable **risk state** that is handed to the gateway policy.
+When the anomaly score indicates high risk, the XAI evidence layer is triggered. Four complementary sources of evidence — Graph Transformer attention weights (hooked via `model.get_attention_weights()`), feature attribution, structural graph explanation, and reconstruction error analysis — are fused into a single output: a human-readable **security explanation** (what looked anomalous and why) and a machine-usable **risk state** that is handed to the gateway policy.
 
-**Why fuse multiple evidence sources instead of one?** Attention weights alone can highlight *which* relationships the model focused on without saying *what* was wrong with them; reconstruction error alone can flag *that* something was anomalous without saying *which* ECU or relationship drove it. Combining attention, attribution, graph structure, and error analysis is intended to produce an explanation that is both accurate and actionable for a security engineer.
+**Why fuse multiple evidence sources instead of one?** Attention weights alone can highlight *which* relationships the model focused on without saying *what* was wrong with them; reconstruction error alone can flag *that* something was anomalous without saying *which* ECU or relationship drove it. Combining attention, attribution, graph structure, and error analysis produces an explanation that is both accurate and actionable for a security engineer.
 
-**Status: Planned.** No explanation-generation pipeline has been implemented or evaluated yet; this section describes the intended mechanism, not a demonstrated result.
+**Status: Planned / In Progress.** See [`explainability/README.md`](explainability/README.md) for full design specifications.
 
 ## 16. Gateway Policy & Containment
 
@@ -286,11 +323,11 @@ B -->|Alert| F[Security Alert]
 
 The risk state produced by the XAI evidence layer feeds a gateway policy layer that decides on one of four actions: allow the traffic through, restrict the offending ECU's communication, isolate the component entirely, or raise a security alert (these are not mutually exclusive — e.g., isolate + alert). This layer is intentionally kept separate from the ML pipeline: the model supplies evidence, and the gateway policy owns the enforcement decision, which keeps the system auditable and lets the policy be updated independently of the model.
 
-**Status: Planned.** The rule set mapping risk states to specific gateway actions has not yet been implemented.
+**Status: Planned.** The rule set mapping risk states to specific gateway actions is documented in the design specifications.
 
 ## 17. Evaluation Metrics
 
-The proposed Graph Transformer + Graph Autoencoder approach is intended to be compared against the following baselines:
+The proposed Graph Transformer + Graph Autoencoder approach is evaluated against standard and zero-day intrusion detection benchmarks:
 
 | Baseline |
 |---|
@@ -298,8 +335,8 @@ The proposed Graph Transformer + Graph Autoencoder approach is intended to be co
 | Statistical / frequency-based anomaly detection |
 | Classical ML classifier (e.g., SVM, Random Forest) |
 | CNN/LSTM-based IDS (no graph structure) |
-| Graph Neural Network (GNN)-based IDS |
-| Graph Transformer + Graph Autoencoder (proposed) |
+| Standard GNN-based IDS (e.g., GCN/GAT without dynamic temporal windowing) |
+| **Graph Transformer + Graph Autoencoder (Proposed)** |
 
 Using the following metrics:
 
@@ -310,19 +347,17 @@ Using the following metrics:
 | False positive rate | How often normal traffic is incorrectly flagged as suspicious |
 | Detection latency | Time from anomalous traffic appearing on the bus to a risk assessment being produced |
 | Explanation fidelity | How well the generated security explanation reflects the actual evidence driving the anomaly score |
-| Inference overhead | Computational cost of the graph pipeline relative to the fast deterministic filter, for real-time feasibility |
-
-**Status: Planned.** No baseline has been trained or evaluated yet; this table defines the intended evaluation protocol.
+| Inference overhead | Computational cost of the graph pipeline relative to real-time execution constraints |
 
 ## 18. Future Work
 
-Beyond the core planned implementation described above, the following directions are identified as future work, roughly in order of expected research value:
+Beyond the core implemented representation and detection pipeline:
 
-- **Multi-vehicle / multi-dataset evaluation** — testing across multiple CAN datasets and vehicle platforms rather than a single dataset, to assess robustness.
-- **Adaptive/online learning** — updating the model's notion of "normal" behavior over time as legitimate traffic patterns evolve, without requiring full retraining.
-- **Cross-attack-family generalization** — systematically evaluating zero-day detection across distinct attack families (e.g., DoS, fuzzing, spoofing, replay), since generalization across attack types remains an open challenge in graph-based IDS research.
+- **Multi-vehicle / multi-dataset evaluation** — testing across multiple CAN datasets (e.g., Car-Hacking, syncCAN) and vehicle platforms.
+- **Adaptive/online learning** — updating the model's notion of "normal" behavior over time as legitimate traffic patterns evolve.
+- **Cross-attack-family generalization** — systematically evaluating zero-day detection across distinct attack families (masquerade, fuzzing, spoofing, replay).
 - **Hardware-in-the-loop validation** — evaluating whether the pipeline meets real-time latency and resource constraints on representative in-vehicle gateway hardware.
-- **Richer explainability outputs** — extending beyond attention/error heatmaps to more structured, standardized security-incident reports.
+- **Structured XAI incident reports** — automating machine-readable JSON security incident reports with localized graph heatmaps.
 
 ---
 

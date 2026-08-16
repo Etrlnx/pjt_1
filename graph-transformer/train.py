@@ -109,10 +109,16 @@ def align_graph_feature_dim(graphs, expected_dim):
 
 def normalize_graph_features(train_graphs, val_graphs, test_graphs):
     """
-    Standardize node statistics using train-set statistics before training.
-    This prevents the model from being dominated by raw feature scale differences,
-    such as message count vs. signal mean, which can cause exploding gradients.
+    Standardize node statistics using train-set statistics only.
+
+    This is intentionally done before training begins and uses only the benign
+    training captures, so the scale is anchored to the normal distribution seen
+    during training instead of leaking validation/test/attack statistics into the
+    feature transform.
     """
+    if not train_graphs:
+        raise ValueError("Training split is empty; cannot compute feature normalization stats.")
+
     train_x = torch.cat([g.x for g in train_graphs], dim=0)
     mean = train_x.mean(dim=0)
     std = train_x.std(dim=0, unbiased=False)
@@ -157,34 +163,36 @@ def run_epoch(model, loader, optimizer, config, train=True):
 
 def compute_per_graph_reconstruction_error(model, loader):
     """
-    Computes per-graph mean squared reconstruction error — this is the
-    raw signal the anomaly score will eventually be built from.
-    Returns a list of (error, label, capture_name) tuples.
+    Computes per-graph reconstruction error and preserves the capture metadata
+    for a per-capture evaluation breakdown. Use batch_size=1 during evaluation so
+    plain string attributes like capture_name are retained as a single entry per
+    graph rather than being silently collated away by PyG's default batching.
     """
     model.eval()
     results = []
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(DEVICE)
+            if batch.num_graphs != 1:
+                raise ValueError("Evaluation loader must use batch_size=1 to retain per-capture metadata.")
+
             outputs = model(
                 x_stats=batch.x,
                 id_idx=batch.id_idx,
                 edge_index=batch.edge_index,
                 edge_weight=batch.edge_attr,
             )
-            # Per-node squared error, averaged per graph using PyG's batch vector
-            node_se = ((outputs["x_recon"] - batch.x) ** 2).mean(dim=-1)  # [total_nodes_in_batch]
+            node_se = ((outputs["x_recon"] - batch.x) ** 2).mean(dim=-1)
+            graph_error = node_se.max().item()
 
-            for graph_id in batch.batch.unique():
-                mask = batch.batch == graph_id
-                graph_error = node_se[mask].mean().item()
-                label = batch.y[graph_id].item()
-                results.append(graph_error)
-                # capture_name isn't batched by PyG automatically since
-                # it's a plain string attribute, not a tensor — if you need
-                # per-capture breakdown, iterate un-batched (batch_size=1)
-                # instead. Left as-is here since this stage only needs the
-                # benign-vs-attack error distributions, not per-capture detail.
+            raw_label = batch.y[0].item()
+            raw_capture = batch.capture_name
+            if isinstance(raw_capture, (list, tuple)):
+                capture_name = raw_capture[0]
+            else:
+                capture_name = raw_capture
+
+            results.append((graph_error, raw_label, capture_name))
 
     return results
 
@@ -205,11 +213,13 @@ def main():
 
     align_graph_feature_dim(graphs, config.node_stat_feature_dim)
     train_graphs, val_graphs, test_graphs = split_data(graphs)
-    normalize_graph_features(train_graphs, val_graphs, test_graphs)
+    train_mean, train_std = normalize_graph_features(train_graphs, val_graphs, test_graphs)
 
     train_loader = DataLoader(train_graphs, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_graphs, batch_size=BATCH_SIZE, shuffle=False)
-    test_loader = DataLoader(test_graphs, batch_size=BATCH_SIZE, shuffle=False)
+    test_loader = DataLoader(test_graphs, batch_size=1, shuffle=False)
+
+    print(f"Train-set feature stats: mean={train_mean[:4].tolist()} | std={train_std[:4].tolist()}")
 
     model = GraphTransformerAutoencoder(config).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -241,11 +251,21 @@ def main():
     checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    errors = compute_per_graph_reconstruction_error(model, test_loader)
-    labels = [g.y.item() for g in test_graphs]
+    graph_results = compute_per_graph_reconstruction_error(model, test_loader)
+    errors = np.array([result[0] for result in graph_results], dtype=np.float32)
+    labels = np.array([result[1] for result in graph_results], dtype=np.int64)
+    capture_names = [result[2] for result in graph_results]
 
-    errors = np.array(errors)
-    labels = np.array(labels)
+    per_capture_errors = {}
+    for err, label, capture_name in graph_results:
+        per_capture_errors.setdefault(capture_name, []).append((err, label))
+
+    print("\nPer-capture reconstruction breakdown:")
+    for capture_name in sorted(per_capture_errors):
+        values = np.array([entry[0] for entry in per_capture_errors[capture_name]], dtype=np.float32)
+        label = per_capture_errors[capture_name][0][1]
+        print(f"  {capture_name}: label={label}, mean={values.mean():.4f}, "
+              f"std={values.std():.4f}, n={len(values)}")
 
     benign_errors = errors[labels == 0]
     attack_errors = errors[labels == 1]

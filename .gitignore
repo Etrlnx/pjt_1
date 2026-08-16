@@ -1,0 +1,7 @@
+graph-transformer/road/
+graph-transformer/road.zip
+graph-transformer/outputs
+# Optional: common Python artifacts
+__pycache__/
+*.pyc
+*.pyo

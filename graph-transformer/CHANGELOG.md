@@ -10,7 +10,7 @@ once a first stable pipeline exists).
 ## [Unreleased]
 
 ### Added
-- Data preprocessing stage (`preprocess_road.py`): parses ROAD signal-translated
+- Data preprocessing stage (`preprocess.py`): parses ROAD signal-translated
   CSV captures (ambient + attack), applies temporal windowing (overlapping for
   benign traffic, non-overlapping for attack traffic), and outputs windowed
   records ready for graph construction.
@@ -39,11 +39,19 @@ once a first stable pipeline exists).
   independently reproducing the CAN-D signal-extraction method rather than
   standard preprocessing.
 
+### Changed
+- Added train-split-only feature normalization in `train.py`: node statistics are
+  standardized using the benign training set mean/std before training begins,
+  preventing leakage from validation/test/attack graphs and preventing the model
+  from being dominated by large-magnitude features.
+- Updated reconstruction-error evaluation to preserve per-graph capture metadata by
+  verifying a single-graph evaluation loader (`batch_size=1`) and recording
+  `(error, label, capture_name)` entries for each graph.
+- Added a per-capture summary in the held-out evaluation output so benign and
+  attack captures can be inspected individually in addition to the aggregate
+  benign-vs-attack mean comparison.
+
 ### Known limitations (tracked, not yet resolved)
-- Node feature scales are not yet normalized before being fed into the
-  reconstruction loss; features such as `msg_count` and `signal_mean` are on
-  very different numeric scales, which can bias the loss toward
-  larger-magnitude features.
 - Graph construction schema (node feature definition, edge construction rule)
   is a first-pass design and has not yet been validated against training results.
 - No formal evaluation (ROC-AUC, precision/recall, cross-dataset generalization)

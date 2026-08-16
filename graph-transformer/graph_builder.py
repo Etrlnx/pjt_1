@@ -1,7 +1,7 @@
 """
 Graph Construction
 --------------------------------------------------------------------
-Converts the WindowRecord objects from preprocess_road.py into
+Converts the WindowRecord objects from preprocess.py into
 PyTorch Geometric `Data` graph objects, ready for the Graph Transformer.
 
 Graph Architecture:

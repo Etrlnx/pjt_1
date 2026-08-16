@@ -1,0 +1,21 @@
+# Core dependencies used across preprocess.py, graph_builder.py,
+# model.py, and train.py.
+#
+# NOTE ON TORCH / TORCH-GEOMETRIC INSTALLATION:
+# torch and torch_geometric are NOT reliably pip-installable via a single
+# generic line across platforms, because the correct build depends on your
+# CUDA version (or CPU-only). Installing them via this file's plain
+# `pip install -r requirements.txt` may pull a CPU-only or mismatched build.
+#
+# Recommended: install torch and torch_geometric FIRST, following the
+# official selectors for your platform, THEN install the rest of this file:
+#   - PyTorch:          https://pytorch.org/get-started/locally/
+#   - PyTorch Geometric: https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html
+#
+# The versions below are what this project was written against — treat as a
+# floor, not a strict pin, unless you hit a compatibility issue.
+
+numpy>=1.26
+pandas>=2.2
+torch>=2.1
+torch-geometric>=2.5
