@@ -115,15 +115,17 @@ def extract_node_features(id_messages: pd.DataFrame, window_duration: float, tot
         signal_values = np.array([])
 
     if len(signal_values) > 0:
-        signal_mean = float(np.mean(signal_values))
-        signal_std = float(np.std(signal_values))
-        signal_min = float(np.min(signal_values))
-        signal_max = float(np.max(signal_values))
+        # Symmetric log1p transform compresses extreme 64-bit counter registers (up to 10^12)
+        # while preserving sign, sensitivity, and relative volatility for physical signals
+        transformed_signals = np.sign(signal_values) * np.log1p(np.abs(signal_values))
+        signal_mean = float(np.mean(transformed_signals))
+        signal_std = float(np.std(transformed_signals))
+        signal_min = float(np.min(transformed_signals))
+        signal_max = float(np.max(transformed_signals))
     else:
         signal_mean = signal_std = signal_min = signal_max = 0.0
 
     signal_range = float(signal_max - signal_min)
-    n_signal_channels = float(len(signal_cols))
 
     return np.array([
         msg_count,

@@ -100,7 +100,11 @@ def discover_captures(ambient_dir: str, attack_dir: str) -> list[CaptureFile]:
     captures = []
 
     for csv_path in sorted(glob.glob(os.path.join(ambient_dir, "*.csv"))):
-        name = os.path.splitext(os.path.basename(csv_path))[0]
+        filename = os.path.basename(csv_path)
+        # Filter out attack captures accidentally placed in ambient folder
+        if not filename.startswith("ambient_"):
+            continue
+        name = os.path.splitext(filename)[0]
         captures.append(CaptureFile(
             path=csv_path,
             capture_name=name,
@@ -109,7 +113,8 @@ def discover_captures(ambient_dir: str, attack_dir: str) -> list[CaptureFile]:
         ))
 
     for csv_path in sorted(glob.glob(os.path.join(attack_dir, "*.csv"))):
-        name = os.path.splitext(os.path.basename(csv_path))[0]
+        filename = os.path.basename(csv_path)
+        name = os.path.splitext(filename)[0]
         captures.append(CaptureFile(
             path=csv_path,
             capture_name=name,
