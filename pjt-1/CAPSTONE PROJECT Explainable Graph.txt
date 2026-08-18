@@ -1,0 +1,17 @@
+CAPSTONE PROJECT: Explainable Graph Transformer Framework for Zero-Day Attack Detection in Autonomous Vehicles
+THINGS TO LEARN (IMPORTANT):
+
+GNNs and their aspects:
+- Uses of PyTorch geometric
+
+Cybersecurity & Anomaly Detection Principles:
+- CAN Bus Protocols
+- Zero-Day Anomaly Formulation
+
+Explainable AI (XAI) for Graphs:
+- Attribution Methods: 
+	- GNNExplainer
+	- Captum (Integrated Gradients)
+	- SHAP 
+
+To assign importance weights to specific graph nodes, edges, or message fields that triggered an alert.
